@@ -1,0 +1,222 @@
+import { describe, expect, it } from 'vitest'
+import {
+  activeBlock,
+  AppData,
+  blockChangedBetween,
+  Block,
+  canPlaceBlock,
+  canWorkOn,
+  contrastText,
+  EMPTY_DATA,
+  fitNewBlock,
+  nextBlock,
+  parseData,
+  visibleHours,
+} from './model'
+
+// Monday 9 November 2026, in local time.
+const at = (hour: number, minute = 0, day = 9) => new Date(2026, 10, day, hour, minute)
+const block = (id: string, start: Date, end: Date, projectId = 'a'): Block => ({
+  id,
+  projectId,
+  start: start.toISOString(),
+  end: end.toISOString(),
+})
+const withBlocks = (blocks: Block[], focusLock = true): AppData => ({
+  ...EMPTY_DATA,
+  blocks,
+  settings: { ...EMPTY_DATA.settings, focusLock },
+})
+
+describe('fitNewBlock', () => {
+  it('grows a half-hour click to one hour', () => {
+    const fit = fitNewBlock(at(10), at(10, 30), [], 6, 24)
+    expect(fit).toEqual({ start: at(10), end: at(11) })
+  })
+
+  it('keeps a drag that is already over an hour, on half-hour edges', () => {
+    const fit = fitNewBlock(at(10, 30), at(12), [], 6, 24)
+    expect(fit).toEqual({ start: at(10, 30), end: at(12) })
+  })
+
+  it('grows backwards when the next half hour is taken', () => {
+    const taken = [block('x', at(11), at(12))]
+    const fit = fitNewBlock(at(10, 30), at(11), taken, 6, 24)
+    expect(fit).toEqual({ start: at(10), end: at(11) })
+  })
+
+  it('refuses when no full hour is free around the click', () => {
+    const taken = [block('x', at(9), at(10)), block('y', at(11), at(12))]
+    // 10:00 to 11:00 is free, so a click at 10:00 fits...
+    expect(fitNewBlock(at(10), at(10, 30), taken, 6, 24)).toEqual({ start: at(10), end: at(11) })
+    // ...but with only 30 minutes free there is nothing to place.
+    const tight = [block('x', at(9), at(10, 30)), block('y', at(11), at(12))]
+    expect(fitNewBlock(at(10, 30), at(11), tight, 6, 24)).toBeNull()
+  })
+
+  it('stays inside the visible day at both ends', () => {
+    expect(fitNewBlock(at(23, 30), at(24), [], 6, 24)).toEqual({ start: at(23), end: at(24) })
+    expect(fitNewBlock(at(6), at(6, 30), [], 6, 24)).toEqual({ start: at(6), end: at(7) })
+  })
+
+  it('refuses a selection that spans two days', () => {
+    expect(fitNewBlock(at(22), at(9, 0, 10), [], 6, 24)).toBeNull()
+  })
+
+  it('allows blocks that touch', () => {
+    const taken = [block('x', at(9), at(10))]
+    expect(fitNewBlock(at(10), at(11), taken, 6, 24)).not.toBeNull()
+  })
+})
+
+describe('canPlaceBlock', () => {
+  const others = [block('other', at(12), at(13))]
+
+  it('rejects anything under an hour', () => {
+    expect(canPlaceBlock('me', at(9), at(9, 30), others)).toBe(false)
+  })
+
+  it('accepts exactly an hour', () => {
+    expect(canPlaceBlock('me', at(9), at(10), others)).toBe(true)
+  })
+
+  it('rejects overlaps with other blocks but ignores itself', () => {
+    expect(canPlaceBlock('me', at(11, 30), at(12, 30), others)).toBe(false)
+    expect(canPlaceBlock('other', at(12, 30), at(13, 30), others)).toBe(true)
+  })
+
+  it('rejects crossing midnight but allows ending at midnight', () => {
+    expect(canPlaceBlock('me', at(23), at(1, 0, 10), [])).toBe(false)
+    expect(canPlaceBlock('me', at(23), at(24), [])).toBe(true)
+  })
+})
+
+describe('activeBlock and nextBlock', () => {
+  const blocks = [block('b', at(14), at(15)), block('a', at(9), at(10))]
+
+  it('includes the start minute and excludes the end minute', () => {
+    expect(activeBlock(blocks, at(9))?.id).toBe('a')
+    expect(activeBlock(blocks, at(9, 59))?.id).toBe('a')
+    expect(activeBlock(blocks, at(10))).toBeNull()
+  })
+
+  it('finds the soonest upcoming block regardless of list order', () => {
+    expect(nextBlock(blocks, at(8))?.id).toBe('a')
+    expect(nextBlock(blocks, at(11))?.id).toBe('b')
+    expect(nextBlock(blocks, at(16))).toBeNull()
+  })
+})
+
+describe('canWorkOn', () => {
+  const blocks = [block('b1', at(9), at(10), 'a')]
+
+  it('allows only the running block\'s project', () => {
+    const data = withBlocks(blocks)
+    expect(canWorkOn('a', data, at(9, 30))).toBe(true)
+    expect(canWorkOn('b', data, at(9, 30))).toBe(false)
+  })
+
+  it('leaves every project open outside blocks', () => {
+    expect(canWorkOn('b', withBlocks(blocks), at(11))).toBe(true)
+  })
+
+  it('leaves every project open with the lock off', () => {
+    expect(canWorkOn('b', withBlocks(blocks, false), at(9, 30))).toBe(true)
+  })
+})
+
+describe('visibleHours', () => {
+  it('uses the settings when no blocks fall outside them', () => {
+    expect(visibleHours(withBlocks([block('x', at(9), at(10))]))).toEqual({ startHour: 6, endHour: 24 })
+  })
+
+  it('widens to keep saved blocks visible', () => {
+    const data = withBlocks([block('x', at(5), at(6))])
+    data.settings = { ...data.settings, dayStartHour: 8, dayEndHour: 18 }
+    expect(visibleHours(data)).toEqual({ startHour: 5, endHour: 18 })
+    data.blocks = [block('y', at(18), at(19, 30))]
+    expect(visibleHours(data)).toEqual({ startHour: 8, endHour: 20 })
+    data.blocks = [block('z', at(23), at(24))]
+    expect(visibleHours(data)).toEqual({ startHour: 8, endHour: 24 })
+  })
+})
+
+describe('blockChangedBetween', () => {
+  const blocks = [block('a', at(9), at(10))]
+
+  it('sees a block starting or ending in the window', () => {
+    expect(blockChangedBetween(blocks, at(8, 59), at(9))).toBe(true)
+    expect(blockChangedBetween(blocks, at(9, 59), at(10))).toBe(true)
+  })
+
+  it('stays quiet in the middle of a block', () => {
+    expect(blockChangedBetween(blocks, at(9, 30), at(9, 31))).toBe(false)
+  })
+
+  it('does not fire twice for the same moment', () => {
+    expect(blockChangedBetween(blocks, at(9), at(9, 1))).toBe(false)
+  })
+})
+
+describe('contrastText', () => {
+  it('picks dark text on light colours and white on dark ones', () => {
+    expect(contrastText('#ffffff')).toBe('#111827')
+    expect(contrastText('#000000')).toBe('#ffffff')
+    expect(contrastText('#4361ee')).toBe('#ffffff')
+  })
+})
+
+describe('parseData', () => {
+  const valid = {
+    version: 1,
+    projects: [{ id: 'a', name: 'A', color: '#112233', todos: [{ id: 't', text: 'x', done: true }] }],
+    blocks: [block('b', at(9), at(10))],
+    settings: EMPTY_DATA.settings,
+  }
+
+  it('accepts good data unchanged', () => {
+    expect(parseData(valid)).toEqual(valid)
+  })
+
+  it('keeps block names, ticks and themes', () => {
+    const named = {
+      ...valid,
+      projects: [{ ...valid.projects[0], oneOff: true }],
+      blocks: [{ ...block('b', at(9), at(10)), title: 'Long run', done: true }],
+    }
+    expect(parseData(named)).toEqual(named)
+  })
+
+  it('reads data saved before names, ticks and the alarm existed', () => {
+    const { alarmOn, ...oldSettings } = EMPTY_DATA.settings
+    const parsed = parseData({ ...valid, settings: oldSettings })
+    expect(alarmOn).toBe(false)
+    expect(parsed.settings.alarmOn).toBe(false)
+    expect(parsed.blocks[0].done).toBeUndefined()
+  })
+
+  it('throws on files that are not this app\'s data', () => {
+    expect(() => parseData(null)).toThrow()
+    expect(() => parseData({ foo: 1 })).toThrow()
+    expect(() => parseData({ ...valid, version: 2 })).toThrow()
+  })
+
+  it('throws on a block pointing at a missing project or a bad date', () => {
+    expect(() => parseData({ ...valid, blocks: [block('b', at(9), at(10), 'gone')] })).toThrow()
+    expect(() =>
+      parseData({ ...valid, blocks: [{ id: 'b', projectId: 'a', start: 'nope', end: 'nope' }] }),
+    ).toThrow()
+  })
+
+  it('throws on a colour that could not be used', () => {
+    expect(() => parseData({ ...valid, projects: [{ ...valid.projects[0], color: 'red' }] })).toThrow()
+  })
+
+  it('falls back to defaults for missing or invalid settings', () => {
+    const parsed = parseData({
+      ...valid,
+      settings: { dayStartHour: 20, dayEndHour: 8, focusLock: false, theme: 'neon', view: 'year' },
+    })
+    expect(parsed.settings).toEqual({ ...EMPTY_DATA.settings, focusLock: false })
+  })
+})
