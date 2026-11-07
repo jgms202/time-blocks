@@ -603,6 +603,29 @@ ul {
   font-size: 12px;
 }
 
+.tb-backup-reminder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--tb-border);
+  border-radius: 8px;
+  background: var(--tb-surface);
+  font-size: 12px;
+}
+
+.tb-backup-reminder p,
+.tb-backup-status {
+  margin: 0;
+  color: var(--tb-muted);
+  font-size: 12px;
+}
+
+.tb-backup-reminder .tb-text-button {
+  margin-top: 0;
+}
+
 .tb-setting-actions {
   display: flex;
   gap: 6px;

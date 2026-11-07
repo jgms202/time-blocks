@@ -151,7 +151,7 @@ export default function CalendarView({
     const { id, start, end } = info.event
     if (!start || !end || !canPlaceBlock(id, start, end, data.blocks)) {
       info.revert()
-      onRejectedChange('Blocks must be at least one hour, in one day, with no overlap.')
+      onRejectedChange('Blocks must be at least half an hour, in one day, with no overlap.')
       return
     }
     onBlockMove(id, start, end)

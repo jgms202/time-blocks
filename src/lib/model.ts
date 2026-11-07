@@ -67,7 +67,9 @@ export const PALETTE = [
 ]
 
 export const HOUR_MS = 60 * 60 * 1000
-export const MIN_BLOCK_MS = HOUR_MS
+export const MIN_BLOCK_MS = HOUR_MS / 2
+/** What a single click on the grid creates, room permitting. */
+export const CLICK_BLOCK_MS = HOUR_MS
 
 export function newId(): string {
   return crypto.randomUUID()
@@ -113,8 +115,8 @@ function atHour(day: Date, hour: number): Date {
 
 /**
  * Turns a click or drag on the grid into a valid block, or null if none fits.
- * A selection under an hour grows to one hour: forwards from its start if free,
- * otherwise backwards from its end.
+ * A selection under an hour (a click) grows to one hour: forwards from its start if
+ * free, otherwise backwards from its end, otherwise it stays a half hour.
  */
 export function fitNewBlock(
   start: Date,
@@ -124,11 +126,12 @@ export function fitNewBlock(
   dayEndHour: number,
 ): Span | null {
   const candidates: Span[] =
-    end.getTime() - start.getTime() >= MIN_BLOCK_MS
+    end.getTime() - start.getTime() >= CLICK_BLOCK_MS
       ? [{ start, end }]
       : [
-          { start, end: new Date(start.getTime() + MIN_BLOCK_MS) },
-          { start: new Date(end.getTime() - MIN_BLOCK_MS), end },
+          { start, end: new Date(start.getTime() + CLICK_BLOCK_MS) },
+          { start: new Date(end.getTime() - CLICK_BLOCK_MS), end },
+          ...(end.getTime() - start.getTime() >= MIN_BLOCK_MS ? [{ start, end }] : []),
         ]
 
   const open = atHour(start, dayStartHour)

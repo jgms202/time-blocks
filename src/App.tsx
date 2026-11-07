@@ -11,7 +11,7 @@ import {
   fitNewBlock,
   formatTime,
   laterRepeats,
-  MIN_BLOCK_MS,
+  CLICK_BLOCK_MS,
   newId,
   nextColor,
   parseData,
@@ -20,6 +20,14 @@ import {
   Settings,
   visibleHours,
 } from './lib/model'
+import {
+  BackupState,
+  isBackupDue,
+  protectStorage,
+  readBackupState,
+  recordBackup,
+  snoozeBackupReminder,
+} from './lib/backup'
 import { useAlarm } from './lib/useAlarm'
 import { Store } from './lib/store'
 
@@ -34,7 +42,16 @@ export default function App({ store }: { store: Store }) {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [copiedWeek, setCopiedWeek] = useState<Date | null>(null)
+  const [backup, setBackup] = useState<BackupState>(readBackupState)
+  const [storageProtected, setStorageProtected] = useState<boolean | null>(null)
   const now = useNow()
+  // Backups and storage protection only matter when data lives in this browser.
+  const savesToBrowser = !account
+  const backupDue = savesToBrowser && isBackupDue(backup, now, data.blocks.length > 0)
+
+  useEffect(() => {
+    if (savesToBrowser) protectStorage().then(setStorageProtected)
+  }, [savesToBrowser])
 
   // The chosen project, falling back to the first one if it was deleted or none was chosen.
   const brush = data.projects.find((p) => p.id === brushId) ?? data.projects[0] ?? null
@@ -119,7 +136,7 @@ export default function App({ store }: { store: Store }) {
 
   function handleSelectRange(start: Date, end: Date) {
     // With a block open, a plain click on the grid just closes it instead of adding a block.
-    if (selectedBlock && end.getTime() - start.getTime() < MIN_BLOCK_MS) {
+    if (selectedBlock && end.getTime() - start.getTime() < CLICK_BLOCK_MS) {
       setSelectedBlockId(null)
       return
     }
@@ -131,7 +148,7 @@ export default function App({ store }: { store: Store }) {
     const { startHour, endHour } = visibleHours(data)
     const fit = fitNewBlock(start, end, data.blocks, startHour, endHour)
     if (!fit) {
-      setToast({ message: 'There isn’t a free hour there. Blocks must be at least one hour.' })
+      setToast({ message: 'There isn’t a free half hour there.' })
       return
     }
     const id = newId()
@@ -254,6 +271,7 @@ export default function App({ store }: { store: Store }) {
     link.download = `time-blocks-backup-${new Date().toISOString().slice(0, 10)}.json`
     link.click()
     URL.revokeObjectURL(url)
+    setBackup(recordBackup(new Date()))
   }
 
   async function importBackup(file: File) {
@@ -285,6 +303,8 @@ export default function App({ store }: { store: Store }) {
         account={account ?? null}
         onExport={exportBackup}
         onImport={importBackup}
+        backup={savesToBrowser ? { due: backupDue, last: backup.last, protected: storageProtected } : null}
+        onSnoozeBackup={() => setBackup(snoozeBackupReminder(new Date()))}
       />
       <CalendarView
         data={data}

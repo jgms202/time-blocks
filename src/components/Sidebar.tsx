@@ -29,7 +29,12 @@ interface Props {
   account: { email: string; signOut: () => void } | null
   onExport: () => void
   onImport: (file: File) => void
+  /** Null when data is saved to an account rather than this browser. */
+  backup: { due: boolean; last: Date | null; protected: boolean | null } | null
+  onSnoozeBackup: () => void
 }
+
+const shortDate = (date: Date) => date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
 export default function Sidebar(props: Props) {
   const { data, brushId, onBrushChange } = props
@@ -89,6 +94,24 @@ export default function Sidebar(props: Props) {
       </section>
 
       <footer className="tb-sidebar-foot">
+        {props.backup?.due && (
+          <div className="tb-backup-reminder" role="status">
+            <p>
+              {props.backup.last
+                ? `Last backup ${shortDate(props.backup.last)}.`
+                : 'No backup yet.'}{' '}
+              Your calendar is only saved in this browser.
+            </p>
+            <div className="tb-setting-actions">
+              <button className="tb-button" onClick={props.onExport}>
+                Save backup
+              </button>
+              <button className="tb-text-button" onClick={props.onSnoozeBackup}>
+                Later
+              </button>
+            </div>
+          </div>
+        )}
         {settingsOpen && <SettingsPanel {...props} />}
         <button
           className="tb-text-button"
@@ -263,7 +286,7 @@ const THEMES: { value: Theme; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ]
 
-function SettingsPanel({ data, onSettingsChange, onTestAlarm, account, onExport, onImport }: Props) {
+function SettingsPanel({ data, onSettingsChange, onTestAlarm, account, onExport, onImport, backup }: Props) {
   const fileInput = useRef<HTMLInputElement>(null)
   const { dayStartHour, dayEndHour, focusLock, theme } = data.settings
 
@@ -344,6 +367,17 @@ function SettingsPanel({ data, onSettingsChange, onTestAlarm, account, onExport,
           }}
         />
       </div>
+      {backup && (
+        <p className="tb-backup-status">
+          Last backup: {backup.last ? shortDate(backup.last) : 'never'}.{' '}
+          {backup.protected === true
+            ? 'The browser won’t clear your data on its own.'
+            : backup.protected === false
+              ? 'The browser may clear your data if space runs low, so keep backups.'
+              : ''}
+          {' '}To bring a backup back, click Restore and pick the file.
+        </p>
+      )}
       {account && (
         <div className="tb-account">
           <span title={account.email}>{account.email}</span>

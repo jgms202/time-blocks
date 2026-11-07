@@ -48,13 +48,18 @@ describe('fitNewBlock', () => {
     expect(fit).toEqual({ start: at(10), end: at(11) })
   })
 
-  it('refuses when no full hour is free around the click', () => {
+  it('falls back to a half hour when no full hour is free around the click', () => {
     const taken = [block('x', at(9), at(10)), block('y', at(11), at(12))]
-    // 10:00 to 11:00 is free, so a click at 10:00 fits...
+    // 10:00 to 11:00 is free, so a click at 10:00 gets the full hour...
     expect(fitNewBlock(at(10), at(10, 30), taken, 6, 24)).toEqual({ start: at(10), end: at(11) })
-    // ...but with only 30 minutes free there is nothing to place.
+    // ...but with only 30 minutes free it gets just those.
     const tight = [block('x', at(9), at(10, 30)), block('y', at(11), at(12))]
-    expect(fitNewBlock(at(10, 30), at(11), tight, 6, 24)).toBeNull()
+    expect(fitNewBlock(at(10, 30), at(11), tight, 6, 24)).toEqual({ start: at(10, 30), end: at(11) })
+  })
+
+  it('refuses when the clicked half hour is taken', () => {
+    const taken = [block('x', at(10), at(11))]
+    expect(fitNewBlock(at(10, 30), at(11), taken, 6, 24)).toBeNull()
   })
 
   it('stays inside the visible day at both ends', () => {
@@ -75,12 +80,12 @@ describe('fitNewBlock', () => {
 describe('canPlaceBlock', () => {
   const others = [block('other', at(12), at(13))]
 
-  it('rejects anything under an hour', () => {
-    expect(canPlaceBlock('me', at(9), at(9, 30), others)).toBe(false)
+  it('rejects anything under half an hour', () => {
+    expect(canPlaceBlock('me', at(9), at(9, 15), others)).toBe(false)
   })
 
-  it('accepts exactly an hour', () => {
-    expect(canPlaceBlock('me', at(9), at(10), others)).toBe(true)
+  it('accepts exactly half an hour', () => {
+    expect(canPlaceBlock('me', at(9), at(9, 30), others)).toBe(true)
   })
 
   it('rejects overlaps with other blocks but ignores itself', () => {
