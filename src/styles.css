@@ -152,6 +152,11 @@ ul {
   min-width: 0;
 }
 
+/* The title gives way first, so the arrows are never pushed out of view. */
+.tb-nav > button {
+  flex-shrink: 0;
+}
+
 .tb-title {
   margin-left: 10px;
   overflow: hidden;
@@ -214,6 +219,12 @@ ul {
 .tb-alarm.is-on {
   background: var(--tb-text);
   color: var(--tb-bg);
+}
+
+.tb-paste {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 /* In tighter windows the date matters more than the alarm's label. */

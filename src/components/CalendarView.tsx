@@ -13,7 +13,7 @@ import dayGridPlugin from '@fullcalendar/react/daygrid'
 import timeGridPlugin from '@fullcalendar/react/timegrid'
 import interactionPlugin from '@fullcalendar/react/interaction'
 import enGb from '@fullcalendar/react/locales/en-gb'
-import { Bell, BellOff, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Bell, BellOff, Check, ChevronLeft, ChevronRight, ClipboardPaste, Copy, X } from 'lucide-react'
 import '@fullcalendar/react/skeleton.css'
 import '@fullcalendar/react/themes/classic/theme.css'
 import '@fullcalendar/react/themes/classic/palette.css'
@@ -70,6 +70,11 @@ interface Props {
   onToggleAlarm: () => void
   onBlockMove: (blockId: string, start: Date, end: Date) => void
   onRejectedChange: (message: string) => void
+  /** The Monday of a copied week, waiting to be pasted. */
+  copiedWeek: Date | null
+  onCopyWeek: (monday: Date) => void
+  onPasteWeek: (monday: Date) => void
+  onCancelCopy: () => void
 }
 
 export default function CalendarView({
@@ -85,9 +90,15 @@ export default function CalendarView({
   onToggleAlarm,
   onBlockMove,
   onRejectedChange,
+  copiedWeek,
+  onCopyWeek,
+  onPasteWeek,
+  onCancelCopy,
 }: Props) {
   const calendar = useRef<CalendarRef>(null)
   const [title, setTitle] = useState('')
+  // The Monday of the first week on screen; copy and paste work on that week.
+  const [shownMonday, setShownMonday] = useState<Date | null>(null)
   const { view, alarmOn } = data.settings
   const { startHour, endHour } = visibleHours(data)
   const activeId = activeBlock(data.blocks, now)?.id
@@ -170,6 +181,33 @@ export default function CalendarView({
           <h1 className="tb-title">{title}</h1>
         </div>
         <div className="tb-toolbar-right">
+        {view !== 'month' && shownMonday && !copiedWeek && (
+          <button
+            className="tb-alarm"
+            aria-label="Copy week"
+            title={view === 'week1' ? 'Copy this week' : 'Copy the first week shown'}
+            onClick={() => onCopyWeek(shownMonday)}
+          >
+            <Copy size={14} />
+            <span className="tb-alarm-label">Copy week</span>
+          </button>
+        )}
+        {view !== 'month' && shownMonday && copiedWeek && (
+          <span className="tb-paste">
+            <button
+              className="tb-alarm is-on"
+              aria-label="Paste week"
+              title={view === 'week1' ? 'Paste into this week' : 'Paste into the first week shown'}
+              onClick={() => onPasteWeek(shownMonday)}
+            >
+              <ClipboardPaste size={14} />
+              <span className="tb-alarm-label">Paste week</span>
+            </button>
+            <button className="tb-icon-button" aria-label="Cancel copy" onClick={onCancelCopy}>
+              <X size={14} />
+            </button>
+          </span>
+        )}
         <button
           className={alarmOn ? 'tb-alarm is-on' : 'tb-alarm'}
           aria-pressed={alarmOn}
@@ -242,7 +280,10 @@ export default function CalendarView({
             info.view.calendar.gotoDate(info.date)
             onViewChange('week1')
           }}
-          datesSet={(info) => setTitle(info.view.title)}
+          datesSet={(info) => {
+            setTitle(info.view.title)
+            setShownMonday(info.view.currentStart)
+          }}
           select={handleSelect}
           dateClick={handleDateClick}
           eventClick={(info: EventClickInfo) => {

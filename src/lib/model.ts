@@ -186,6 +186,46 @@ export function blockChangedBetween(blocks: Block[], from: Date, to: Date): bool
   })
 }
 
+/** The same local clock time a number of days later, so summer time changes don't shift blocks. */
+function addDays(date: Date, days: number): Date {
+  return new Date(
+    date.getFullYear(), date.getMonth(), date.getDate() + days,
+    date.getHours(), date.getMinutes(), date.getSeconds(),
+  )
+}
+
+/**
+ * Copies the blocks of the Monday-to-Sunday week starting `fromMonday` into the week
+ * starting `toMonday`, at the same times. Copies are unticked, and any copy that
+ * would overlap a block already there is skipped.
+ */
+export function copyWeek(
+  blocks: Block[],
+  fromMonday: Date,
+  toMonday: Date,
+): { added: Block[]; skipped: number } {
+  const days = Math.round((toMonday.getTime() - fromMonday.getTime()) / (24 * HOUR_MS))
+  const weekEnd = addDays(fromMonday, 7)
+  const added: Block[] = []
+  let skipped = 0
+  if (days === 0) return { added, skipped }
+
+  for (const b of blocks) {
+    const { start, end } = toSpan(b)
+    if (start < fromMonday || start >= weekEnd) continue
+    const copy: Block = {
+      id: newId(),
+      projectId: b.projectId,
+      start: addDays(start, days).toISOString(),
+      end: addDays(end, days).toISOString(),
+      ...(b.title ? { title: b.title } : {}),
+    }
+    if (overlapsAny(toSpan(copy), [...blocks, ...added])) skipped++
+    else added.push(copy)
+  }
+  return { added, skipped }
+}
+
 /** Day hours to show: the chosen range, widened so no saved block is ever hidden. */
 export function visibleHours(data: AppData): { startHour: number; endHour: number } {
   let startHour = data.settings.dayStartHour

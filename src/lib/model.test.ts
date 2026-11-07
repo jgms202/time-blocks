@@ -7,6 +7,7 @@ import {
   canPlaceBlock,
   canWorkOn,
   contrastText,
+  copyWeek,
   EMPTY_DATA,
   fitNewBlock,
   nextBlock,
@@ -155,6 +156,61 @@ describe('blockChangedBetween', () => {
 
   it('does not fire twice for the same moment', () => {
     expect(blockChangedBetween(blocks, at(9), at(9, 1))).toBe(false)
+  })
+})
+
+describe('copyWeek', () => {
+  const monday = at(0)
+  const nextMonday = at(0, 0, 16)
+
+  it('copies a week to the same days and times a week later', () => {
+    const blocks = [block('a', at(9), at(10)), block('b', at(14, 30), at(16), 'b')]
+    const { added, skipped } = copyWeek(blocks, monday, nextMonday)
+    expect(skipped).toBe(0)
+    expect(added.map((b) => [b.start, b.end, b.projectId])).toEqual([
+      [at(9, 0, 16).toISOString(), at(10, 0, 16).toISOString(), 'a'],
+      [at(14, 30, 16).toISOString(), at(16, 0, 16).toISOString(), 'b'],
+    ])
+    expect(new Set(added.map((b) => b.id)).size).toBe(2)
+    expect(added.some((b) => blocks.some((o) => o.id === b.id))).toBe(false)
+  })
+
+  it('only copies blocks inside the source week, Sunday included', () => {
+    const blocks = [
+      block('sun', at(22, 0, 15), at(24, 0, 15)),
+      block('before', at(9, 0, 8), at(10, 0, 8)),
+      block('after', at(9, 0, 16), at(10, 0, 16)),
+    ]
+    // Two weeks ahead, so the 15th lands on the 29th.
+    expect(copyWeek(blocks, monday, at(0, 0, 23)).added.map((b) => b.start)).toEqual([
+      at(22, 0, 29).toISOString(),
+    ])
+  })
+
+  it('keeps names but not ticks', () => {
+    const named = { ...block('a', at(9), at(10)), title: 'Long run', done: true }
+    const [copy] = copyWeek([named], monday, nextMonday).added
+    expect(copy.title).toBe('Long run')
+    expect(copy.done).toBeUndefined()
+  })
+
+  it('skips copies that would overlap blocks already in the target week', () => {
+    const blocks = [block('a', at(9), at(10)), block('b', at(11), at(12)), block('x', at(9, 30, 16), at(10, 30, 16))]
+    const { added, skipped } = copyWeek(blocks, monday, nextMonday)
+    expect(skipped).toBe(1)
+    expect(added.map((b) => b.start)).toEqual([at(11, 0, 16).toISOString()])
+  })
+
+  it('copies nothing onto the same week', () => {
+    expect(copyWeek([block('a', at(9), at(10))], monday, monday)).toEqual({ added: [], skipped: 0 })
+  })
+
+  it('keeps clock times across the change from summer time', () => {
+    // UK clocks went back on Sunday 25 October 2026.
+    const blocks = [block('a', new Date(2026, 9, 21, 9), new Date(2026, 9, 21, 10))]
+    const [copy] = copyWeek(blocks, new Date(2026, 9, 19), new Date(2026, 9, 26)).added
+    expect(new Date(copy.start).getHours()).toBe(9)
+    expect(new Date(copy.start).getDate()).toBe(28)
   })
 })
 

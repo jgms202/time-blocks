@@ -7,6 +7,7 @@ import {
   activeBlock,
   AppData,
   Block,
+  copyWeek,
   fitNewBlock,
   formatTime,
   MIN_BLOCK_MS,
@@ -30,6 +31,7 @@ export default function App({ store }: { store: Store }) {
   const [brushId, setBrushId] = useState<string | null>(null)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
+  const [copiedWeek, setCopiedWeek] = useState<Date | null>(null)
   const now = useNow()
 
   // The chosen project, falling back to the first one if it was deleted or none was chosen.
@@ -174,6 +176,37 @@ export default function App({ store }: { store: Store }) {
     }))
   }
 
+  function handleCopyWeek(monday: Date) {
+    const nextMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7)
+    const count = data.blocks.filter((b) => {
+      const start = new Date(b.start)
+      return start >= monday && start < nextMonday
+    }).length
+    if (!count) {
+      setToast({ message: 'This week has no blocks to copy.' })
+      return
+    }
+    setCopiedWeek(monday)
+    setToast({ message: `Copied ${plural(count, 'block')}. Go to another week and click Paste week.` })
+  }
+
+  function handlePasteWeek(monday: Date) {
+    if (!copiedWeek) return
+    if (copiedWeek.getTime() === monday.getTime()) {
+      setToast({ message: 'Go to another week first, then paste.' })
+      return
+    }
+    const { added, skipped } = copyWeek(data.blocks, copiedWeek, monday)
+    const skippedNote = skipped ? ` Skipped ${plural(skipped, 'block')} that would overlap.` : ''
+    if (!added.length) {
+      setToast({ message: `Nothing pasted.${skippedNote}` })
+      return
+    }
+    const undo = data
+    update((d) => ({ ...d, blocks: [...d.blocks, ...added] }))
+    setToast({ message: `Pasted ${plural(added.length, 'block')}.${skippedNote}`, undo })
+  }
+
   function deleteBlock(blockId: string) {
     const undo = data
     update((d) => ({ ...d, blocks: d.blocks.filter((b) => b.id !== blockId) }))
@@ -237,6 +270,10 @@ export default function App({ store }: { store: Store }) {
         onToggleAlarm={toggleAlarm}
         onBlockMove={moveBlock}
         onRejectedChange={(message) => setToast({ message })}
+        copiedWeek={copiedWeek}
+        onCopyWeek={handleCopyWeek}
+        onPasteWeek={handlePasteWeek}
+        onCancelCopy={() => setCopiedWeek(null)}
       />
       {selectedBlock && (
         <BlockPanel
@@ -284,6 +321,10 @@ export default function App({ store }: { store: Store }) {
       )}
     </div>
   )
+}
+
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? '' : 's'}`
 }
 
 /** The current time, refreshed often enough for blocks to start and end on time. */
