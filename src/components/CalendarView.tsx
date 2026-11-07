@@ -260,6 +260,7 @@ export default function CalendarView({
           eventDisplay="block"
           selectable={view !== 'month'}
           editable={view !== 'month'}
+          eventResizableFromStart
           selectMirror
           selectOverlap={false}
           selectAllow={(span) => isWithinOneDay(span.start, span.end)}

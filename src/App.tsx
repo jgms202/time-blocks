@@ -10,11 +10,13 @@ import {
   copyWeek,
   fitNewBlock,
   formatTime,
+  laterRepeats,
   MIN_BLOCK_MS,
   newId,
   nextColor,
   parseData,
   Project,
+  repeatWeekly,
   Settings,
   visibleHours,
 } from './lib/model'
@@ -207,6 +209,33 @@ export default function App({ store }: { store: Store }) {
     setToast({ message: `Pasted ${plural(added.length, 'block')}.${skippedNote}`, undo })
   }
 
+  function repeatBlock(blockId: string, weeks: number, everyWeeks: number) {
+    const block = data.blocks.find((b) => b.id === blockId)
+    if (!block) return
+    const { repeatId, added, skipped } = repeatWeekly(data.blocks, block, weeks, everyWeeks)
+    const skippedNote = skipped ? ` Skipped ${plural(skipped, 'week')} where that time is taken.` : ''
+    if (!added.length) {
+      setToast({ message: `Nothing added.${skippedNote}` })
+      return
+    }
+    const undo = data
+    update((d) => ({
+      ...d,
+      blocks: [...d.blocks.map((b) => (b.id === blockId ? { ...b, repeatId } : b)), ...added],
+    }))
+    setToast({ message: `Added ${plural(added.length, 'repeat')}.${skippedNote}`, undo })
+  }
+
+  function deleteLaterRepeats(blockId: string) {
+    const block = data.blocks.find((b) => b.id === blockId)
+    if (!block) return
+    const ids = new Set(laterRepeats(data.blocks, block).map((b) => b.id))
+    const undo = data
+    update((d) => ({ ...d, blocks: d.blocks.filter((b) => !ids.has(b.id)) }))
+    setSelectedBlockId(null)
+    setToast({ message: `Deleted ${plural(ids.size, 'block')}.`, undo })
+  }
+
   function deleteBlock(blockId: string) {
     const undo = data
     update((d) => ({ ...d, blocks: d.blocks.filter((b) => b.id !== blockId) }))
@@ -285,7 +314,9 @@ export default function App({ store }: { store: Store }) {
           onChangeProject={changeBlockProject}
           onRename={(blockId, title) => changeBlock(blockId, { title })}
           onToggleDone={toggleBlockDone}
+          onRepeat={repeatBlock}
           onDelete={deleteBlock}
+          onDeleteLaterRepeats={deleteLaterRepeats}
           onClose={() => setSelectedBlockId(null)}
         />
       )}

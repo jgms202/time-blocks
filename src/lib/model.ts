@@ -22,6 +22,8 @@ export interface Block {
   end: string // ISO timestamp
   title?: string
   done?: boolean
+  /** Shared by a block and its weekly repeats. */
+  repeatId?: string
 }
 
 export type ViewName = 'week1' | 'week2' | 'week3' | 'month'
@@ -226,6 +228,44 @@ export function copyWeek(
   return { added, skipped }
 }
 
+/**
+ * Copies of a block every week (or every few weeks) over the given number of weeks
+ * after it, at the same time and unticked. All of them share a repeatId with the
+ * original, which the caller should save on the original too. Copies that would
+ * overlap a block are skipped.
+ */
+export function repeatWeekly(
+  blocks: Block[],
+  block: Block,
+  weeks: number,
+  everyWeeks = 1,
+): { repeatId: string; added: Block[]; skipped: number } {
+  const repeatId = block.repeatId ?? newId()
+  const { start, end } = toSpan(block)
+  const added: Block[] = []
+  let skipped = 0
+  for (let week = everyWeeks; week <= weeks; week += everyWeeks) {
+    const copy: Block = {
+      id: newId(),
+      projectId: block.projectId,
+      start: addDays(start, 7 * week).toISOString(),
+      end: addDays(end, 7 * week).toISOString(),
+      ...(block.title ? { title: block.title } : {}),
+      repeatId,
+    }
+    if (overlapsAny(toSpan(copy), [...blocks, ...added])) skipped++
+    else added.push(copy)
+  }
+  return { repeatId, added, skipped }
+}
+
+/** A block and the later blocks of its weekly repeat. */
+export function laterRepeats(blocks: Block[], block: Block): Block[] {
+  if (!block.repeatId) return [block]
+  const from = new Date(block.start)
+  return blocks.filter((b) => b.repeatId === block.repeatId && new Date(b.start) >= from)
+}
+
 /** Day hours to show: the chosen range, widened so no saved block is ever hidden. */
 export function visibleHours(data: AppData): { startHour: number; endHour: number } {
   let startHour = data.settings.dayStartHour
@@ -314,6 +354,7 @@ export function parseData(raw: unknown): AppData {
       end: b.end,
       ...(typeof b.title === 'string' && b.title ? { title: b.title } : {}),
       ...(b.done ? { done: true } : {}),
+      ...(typeof b.repeatId === 'string' && b.repeatId ? { repeatId: b.repeatId } : {}),
     }
   })
 

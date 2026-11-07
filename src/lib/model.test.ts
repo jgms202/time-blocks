@@ -10,8 +10,10 @@ import {
   copyWeek,
   EMPTY_DATA,
   fitNewBlock,
+  laterRepeats,
   nextBlock,
   parseData,
+  repeatWeekly,
   visibleHours,
 } from './model'
 
@@ -214,6 +216,54 @@ describe('copyWeek', () => {
   })
 })
 
+describe('repeatWeekly', () => {
+  it('adds a copy each week at the same time, sharing a repeat id', () => {
+    const meeting = { ...block('m', at(14), at(15)), title: 'Supervisor', done: true }
+    const { repeatId, added, skipped } = repeatWeekly([meeting], meeting, 3)
+    expect(skipped).toBe(0)
+    expect(added.map((b) => b.start)).toEqual([16, 23, 30].map((d) => at(14, 0, d).toISOString()))
+    expect(added.every((b) => b.repeatId === repeatId && b.title === 'Supervisor' && !b.done)).toBe(true)
+    expect(new Set(added.map((b) => b.id)).size).toBe(3)
+  })
+
+  it('repeats every two weeks', () => {
+    const meeting = block('m', at(14), at(15))
+    const { added } = repeatWeekly([meeting], meeting, 8, 2)
+    expect(added.map((b) => b.start)).toEqual(
+      [new Date(2026, 10, 23), new Date(2026, 11, 7), new Date(2026, 11, 21), new Date(2027, 0, 4)].map(
+        (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 14).toISOString(),
+      ),
+    )
+  })
+
+  it('keeps the repeat id of a block that already repeats', () => {
+    const repeating = { ...block('m', at(14), at(15)), repeatId: 'r1' }
+    expect(repeatWeekly([repeating], repeating, 1).repeatId).toBe('r1')
+  })
+
+  it('skips weeks where the time is taken', () => {
+    const meeting = block('m', at(14), at(15))
+    const busy = block('x', at(14, 30, 23), at(16, 0, 23))
+    const { added, skipped } = repeatWeekly([meeting, busy], meeting, 3)
+    expect(skipped).toBe(1)
+    expect(added.map((b) => new Date(b.start).getDate())).toEqual([16, 30])
+  })
+})
+
+describe('laterRepeats', () => {
+  const series = [9, 16, 23].map((d) => ({ ...block(`m${d}`, at(14, 0, d), at(15, 0, d)), repeatId: 'r' }))
+  const other = { ...block('o', at(9, 0, 23), at(10, 0, 23)), repeatId: 'other' }
+
+  it('finds this block and later ones in the same repeat', () => {
+    expect(laterRepeats([...series, other], series[1]).map((b) => b.id)).toEqual(['m16', 'm23'])
+  })
+
+  it('returns just the block when it does not repeat', () => {
+    const single = block('s', at(9), at(10))
+    expect(laterRepeats([single, ...series], single)).toEqual([single])
+  })
+})
+
 describe('contrastText', () => {
   it('picks dark text on light colours and white on dark ones', () => {
     expect(contrastText('#ffffff')).toBe('#111827')
@@ -238,7 +288,7 @@ describe('parseData', () => {
     const named = {
       ...valid,
       projects: [{ ...valid.projects[0], oneOff: true }],
-      blocks: [{ ...block('b', at(9), at(10)), title: 'Long run', done: true }],
+      blocks: [{ ...block('b', at(9), at(10)), title: 'Long run', done: true, repeatId: 'r' }],
     }
     expect(parseData(named)).toEqual(named)
   })

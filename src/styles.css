@@ -572,6 +572,37 @@ ul {
   color: var(--tb-text);
 }
 
+/* The label sits on its own line so both menus and the button fit the narrow panel. */
+.tb-repeat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tb-repeat-label {
+  width: 100%;
+  color: var(--tb-muted);
+}
+
+.tb-repeat .tb-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 4px;
+}
+
+.tb-repeat .tb-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 7px;
+}
+
+.tb-repeat-note {
+  margin: 0;
+  color: var(--tb-muted);
+  font-size: 12px;
+}
+
 .tb-setting-actions {
   display: flex;
   gap: 6px;
